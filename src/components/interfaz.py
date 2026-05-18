@@ -3,7 +3,7 @@ import sys
 import time
 import threading
 import tkinter as tk
-from tkinter import messagebox, filedialog, scrolledtext
+from tkinter import messagebox, filedialog, scrolledtext, simpledialog
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT_DIR)
@@ -23,6 +23,7 @@ class VocesClarasApp:
         self.procesando = False
         self._start_global = None
         self._start_tarea = None
+        self.formato_salida = 'mkv'  # valor por defecto
         self._crear_widgets()
 
     def _crear_widgets(self):
@@ -32,6 +33,14 @@ class VocesClarasApp:
         btn_sel.pack(side=tk.LEFT, padx=5)
         self.lbl_count = tk.Label(frame_top, text="0 archivos seleccionados")
         self.lbl_count.pack(side=tk.LEFT, padx=20)
+
+        # Selector de formato de salida
+        formato_frame = tk.Frame(self.root, padx=10, pady=5)
+        formato_frame.pack(fill=tk.X)
+        tk.Label(formato_frame, text="Formato de salida:").pack(side=tk.LEFT)
+        self.formato_var = tk.StringVar(value='mkv')
+        tk.Radiobutton(formato_frame, text="MKV", variable=self.formato_var, value='mkv').pack(side=tk.LEFT, padx=5)
+        tk.Radiobutton(formato_frame, text="MP4", variable=self.formato_var, value='mp4').pack(side=tk.LEFT, padx=5)
 
         frame_lista = tk.Frame(self.root, padx=10)
         frame_lista.pack(fill=tk.BOTH, expand=True)
@@ -130,6 +139,7 @@ class VocesClarasApp:
         self.btn_iniciar.config(state=tk.DISABLED)
         self.btn_detener.config(state=tk.NORMAL)
         self._start_global = time.time()
+        self.formato_salida = self.formato_var.get()  # leer formato antes de empezar
         t = threading.Thread(target=self.procesar_videos, daemon=True)
         t.start()
 
@@ -177,7 +187,7 @@ class VocesClarasApp:
             try:
                 srt_esp = traducir_srt(srt_ing)
                 if not srt_esp:
-                    self.log_message("⚠ Fallo en traducción. Se usará solo inglés.")
+                    self.log_message("⚠ Fallo en traducción. Se incrustará solo inglés.")
             except Exception as e:
                 self.log_message(f"❌ Error en traducción: {e}")
                 srt_esp = None
@@ -186,9 +196,16 @@ class VocesClarasApp:
             self._start_tarea = time.time()
             self.actualizar_barra_tarea(0, "Multiplexando...")
             try:
-                ruta_final = incrustar_subtitulos(video, srt_ing, srt_esp if srt_esp else srt_ing)
+                ruta_final = incrustar_subtitulos(video, srt_ing, srt_esp, formato_salida=self.formato_salida)
                 if ruta_final:
                     self.log_message(f"✔ Completado: {ruta_final}")
+                    # Preguntar si eliminar original (ventana emergente)
+                    if messagebox.askyesno("Eliminar original", "¿Deseas eliminar el video original?"):
+                        try:
+                            os.remove(video)
+                            self.log_message("✔ Video original eliminado.")
+                        except Exception as e:
+                            self.log_message(f"⚠ No se pudo eliminar: {e}")
                 else:
                     self.log_message("⚠ No se pudo empaquetar. Conserva los subtítulos sueltos.")
             except Exception as e:
