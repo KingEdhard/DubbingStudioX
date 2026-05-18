@@ -39,7 +39,7 @@ Estos scripts crearán el entorno virtual, instalarán las dependencias y descar
 2. **Extracción y mejora de audio** – Detecta la pista en inglés, aplica el filtro de realce vocal y la convierte a WAV mono 16 kHz.
 3. **Transcripción en inglés** – `faster‑whisper` (modelo `medium` o `large‑v3`) genera un archivo `.srt` con marcas de tiempo.
 4. **Traducción al español** – `Helsinki‑NLP/opus‑mt‑en‑es` traduce cada segmento, conservando las marcas de tiempo.
-5. **Incrustación** – `FFmpeg` multiplexa los subtítulos en un nuevo vídeo (MKV o MP4).
+5. **Incrustación** – `FFmpeg` multiplexa los subtítulos en un nuevo vídeo (MKV o MP4 elegible desde la interfaz gráfica).
 6. **Limpieza** – Se eliminan los archivos temporales (WAV) y se pregunta si se desea borrar el vídeo original.
 
 ---
@@ -65,6 +65,7 @@ Estos scripts crearán el entorno virtual, instalarán las dependencias y descar
 
 - Si el formato elegido falla (códecs incompatibles con MP4), se reintenta automáticamente en MKV.
 - Subtítulos gráficos (PGS/DVD) detectados y omitidos si causan conflictos.
+- Fallo en la multiplexación → se reintenta automáticamente omitiendo subtítulos originales y cambiando a MKV si era MP4.
 - En procesamiento por lotes, un error en un vídeo no detiene el resto de la cola.
 
 ---
