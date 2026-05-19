@@ -3,6 +3,7 @@ import json
 import os
 import re
 import time
+import glob
 from src.utils import FFMPEG_PATH, FFPROBE_PATH, DEBUG, input_validado
 
 def obtener_pistas_audio(archivo):
@@ -74,12 +75,26 @@ def _obtener_duracion_video(archivo):
         pass
     return 0.0
 
+def _limpiar_carpeta_salida(carpeta):
+    """Elimina archivos .wav y .srt existentes en la carpeta de salida."""
+    if not os.path.isdir(carpeta):
+        return
+    patrones = ['*.wav', '*.srt']
+    for patron in patrones:
+        for archivo in glob.glob(os.path.join(carpeta, patron)):
+            try:
+                os.remove(archivo)
+                if DEBUG:
+                    print(f"[DEBUG] Eliminado archivo previo: {archivo}")
+            except Exception as e:
+                print(f"⚠ No se pudo eliminar {archivo}: {e}")
+
 def extraer_audio_mejorado(archivo_video, progress_callback=None):
     """
     Extrae la pista de audio en inglés, aplica realce de diálogos y devuelve
     la ruta del WAV temporal listo para Whisper.
-    Si se proporciona progress_callback(porcentaje), se llamará periódicamente.
     Los archivos se guardan en una subcarpeta <nombre_video>_subtitulos_generados/
+    Se eliminan automáticamente .wav y .srt de ejecuciones anteriores.
     """
     if not os.path.exists(archivo_video):
         print(f"✖ Archivo no encontrado: {archivo_video}")
@@ -93,11 +108,12 @@ def extraer_audio_mejorado(archivo_video, progress_callback=None):
 
     idx_audio = elegir_pista_ingles(pistas)
 
-    # Crear carpeta de salida
+    # Crear carpeta de salida y limpiar restos
     dir_video = os.path.dirname(archivo_video)
     nombre_base = os.path.splitext(os.path.basename(archivo_video))[0]
     carpeta_salida = os.path.join(dir_video, nombre_base + "_subtitulos_generados")
     os.makedirs(carpeta_salida, exist_ok=True)
+    _limpiar_carpeta_salida(carpeta_salida)   # <-- ¡limpieza!
 
     # WAV dentro de la carpeta
     wav_temp = os.path.join(carpeta_salida, nombre_base + "_dialogos_mejorados.wav")
@@ -122,7 +138,6 @@ def extraer_audio_mejorado(archivo_video, progress_callback=None):
     if DEBUG:
         print(f"[DEBUG] Comando: {' '.join(cmd)}")
 
-    # Obtener duración para el progreso
     duracion = _obtener_duracion_video(archivo_video)
     if duracion > 0:
         print(f"⏱ Duración detectada: {duracion:.1f} segundos")
