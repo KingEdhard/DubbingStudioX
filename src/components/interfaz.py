@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import threading
+import shutil
 import tkinter as tk
 from tkinter import messagebox, filedialog, scrolledtext
 
@@ -12,7 +13,6 @@ from src.components.extraccion import extraer_audio_mejorado
 from src.components.transcripcion import transcribir_audio
 from src.components.traduccion import traducir_srt
 from src.components.muxer import incrustar_subtitulos
-from src.components.metadata import agregar_metadatos_subtitulos
 
 class VocesClarasApp:
     def __init__(self, root):
@@ -154,7 +154,6 @@ class VocesClarasApp:
         self.log_message("Detenido por el usuario.")
 
     def extraccion_progress(self, porcentaje):
-        # Llamar desde el hilo principal con after para que la barra se mueva en tiempo real
         self.root.after(0, self.actualizar_barra_tarea, porcentaje, "Extrayendo audio...")
 
     def transcripcion_progress(self, current, total):
@@ -187,8 +186,19 @@ class VocesClarasApp:
             if not self.procesando:
                 break
 
+            # Protección anti-anidamiento
+            nombre_base_video = os.path.splitext(os.path.basename(video))[0]
+            if nombre_base_video.endswith("_subtitulado"):
+                self.root.after(0, self.log_message, f"⏭ Omitido (ya es un archivo de salida): {os.path.basename(video)}")
+                continue
+
             nombre = os.path.basename(video)
             self.root.after(0, self.log_message, f"\n🎬 Vídeo {i}/{total_videos}: {nombre}")
+
+            # Crear carpeta de salida desde el principio (junto al video original)
+            dir_salida_def = os.path.join(os.path.dirname(video),
+                                          nombre_base_video + "_subtitulos_generados")
+            os.makedirs(dir_salida_def, exist_ok=True)
 
             progreso_base = (i - 1) * etapas_por_video * peso_por_etapa
             self.root.after(0, self.actualizar_barra_global, progreso_base)
@@ -215,6 +225,10 @@ class VocesClarasApp:
                     self.root.after(0, self.log_message, "⚠ Fallo en transcripción.")
                     if os.path.exists(wav): os.remove(wav)
                     continue
+                # Copiar SRT inglés a la carpeta definitiva inmediatamente
+                srt_ing_final = os.path.join(dir_salida_def, os.path.basename(srt_ing))
+                shutil.copy2(srt_ing, srt_ing_final)
+                self.root.after(0, self.log_message, f"📄 Subtítulo inglés copiado: {srt_ing_final}")
             except Exception as e:
                 self.root.after(0, self.log_message, f"❌ Error en transcripción: {e}")
                 if os.path.exists(wav): os.remove(wav)
@@ -224,27 +238,29 @@ class VocesClarasApp:
             # 3. Traducción
             self._start_tarea = time.time()
             self.root.after(0, self.actualizar_barra_tarea, 0, "Traduciendo...")
+            srt_esp_final = None
             try:
                 srt_esp = traducir_srt(srt_ing, progress_callback=self.traduccion_progress)
-                if not srt_esp:
+                if srt_esp:
+                    srt_esp_final = os.path.join(dir_salida_def, os.path.basename(srt_esp))
+                    shutil.copy2(srt_esp, srt_esp_final)
+                    self.root.after(0, self.log_message, f"📄 Subtítulo español copiado: {srt_esp_final}")
+                else:
                     self.root.after(0, self.log_message, "⚠ Fallo en traducción. Se incrustará solo inglés.")
             except Exception as e:
                 self.root.after(0, self.log_message, f"❌ Error en traducción: {e}")
                 srt_esp = None
             self.root.after(0, self.actualizar_barra_global, progreso_base + 3 * peso_por_etapa)
 
-            # 4. Multiplexado
+            # 4. Multiplexado (usa las copias que ya están en dir_salida_def)
             self._start_tarea = time.time()
             self.root.after(0, self.actualizar_barra_tarea, 0, "Multiplexando...")
             try:
-                ruta_final = incrustar_subtitulos(video, srt_ing, srt_esp, formato_salida=self.formato_salida, progress_callback=self.muxer_progress)
+                ruta_final = incrustar_subtitulos(video, srt_ing_final, srt_esp_final,
+                                                  formato_salida=self.formato_salida,
+                                                  progress_callback=self.muxer_progress)
                 if ruta_final:
-                    self.root.after(0, self.log_message, "Añadiendo metadatos de idioma...")
-                    agregar_metadatos_subtitulos(ruta_final)
-                    self.root.after(0, self.log_message, "Añadiendo metadatos de idioma...")
-                    agregar_metadatos_subtitulos(ruta_final)
                     self.root.after(0, self.log_message, f"✔ Completado: {ruta_final}")
-                    # Diálogo de eliminación debe ejecutarse en hilo principal
                     self.root.after(0, self._preguntar_eliminar_original, video)
                 else:
                     self.root.after(0, self.log_message, "⚠ No se pudo empaquetar. Conserva los subtítulos sueltos.")

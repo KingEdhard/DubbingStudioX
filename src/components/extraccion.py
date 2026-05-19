@@ -3,11 +3,10 @@ import json
 import os
 import re
 import time
-import glob
+import tempfile
 from src.utils import FFMPEG_PATH, FFPROBE_PATH, DEBUG, input_validado
 
 def obtener_pistas_audio(archivo):
-    """Devuelve una lista de pistas de audio con (index, idioma, codec, canales)."""
     cmd = [
         FFPROBE_PATH, '-v', 'error',
         '-select_streams', 'a',
@@ -41,7 +40,6 @@ def obtener_pistas_audio(archivo):
         return []
 
 def elegir_pista_ingles(pistas):
-    """Selecciona la primera pista en inglés; si no hay, pregunta al usuario."""
     pistas_eng = [p for p in pistas if p['idioma'] in ('eng', 'en', 'english', 'en-us', 'en-gb')]
     if pistas_eng:
         elegida = pistas_eng[0]
@@ -60,7 +58,6 @@ def elegir_pista_ingles(pistas):
         return int(indice)
 
 def _obtener_duracion_video(archivo):
-    """Devuelve la duración del video en segundos usando ffprobe."""
     cmd = [
         FFPROBE_PATH, '-v', 'error',
         '-show_entries', 'format=duration',
@@ -75,27 +72,7 @@ def _obtener_duracion_video(archivo):
         pass
     return 0.0
 
-def _limpiar_carpeta_salida(carpeta):
-    """Elimina archivos .wav y .srt existentes en la carpeta de salida."""
-    if not os.path.isdir(carpeta):
-        return
-    patrones = ['*.wav', '*.srt']
-    for patron in patrones:
-        for archivo in glob.glob(os.path.join(carpeta, patron)):
-            try:
-                os.remove(archivo)
-                if DEBUG:
-                    print(f"[DEBUG] Eliminado archivo previo: {archivo}")
-            except Exception as e:
-                print(f"⚠ No se pudo eliminar {archivo}: {e}")
-
 def extraer_audio_mejorado(archivo_video, progress_callback=None):
-    """
-    Extrae la pista de audio en inglés, aplica realce de diálogos y devuelve
-    la ruta del WAV temporal listo para Whisper.
-    Los archivos se guardan en una subcarpeta <nombre_video>_subtitulos_generados/
-    Se eliminan automáticamente .wav y .srt de ejecuciones anteriores.
-    """
     if not os.path.exists(archivo_video):
         print(f"✖ Archivo no encontrado: {archivo_video}")
         return None
@@ -108,19 +85,11 @@ def extraer_audio_mejorado(archivo_video, progress_callback=None):
 
     idx_audio = elegir_pista_ingles(pistas)
 
-    # Crear carpeta de salida y limpiar restos
-    dir_video = os.path.dirname(archivo_video)
-    nombre_base = os.path.splitext(os.path.basename(archivo_video))[0]
-    carpeta_salida = os.path.join(dir_video, nombre_base + "_subtitulos_generados")
-    os.makedirs(carpeta_salida, exist_ok=True)
-    _limpiar_carpeta_salida(carpeta_salida)   # <-- ¡limpieza!
+    # Crear directorio temporal exclusivo (ruta corta)
+    tmp_dir = tempfile.mkdtemp(prefix='vc_audio_')
+    nombre_wav = os.path.splitext(os.path.basename(archivo_video))[0] + "_dialogos_mejorados.wav"
+    wav_temp = os.path.join(tmp_dir, nombre_wav)
 
-    # WAV dentro de la carpeta
-    wav_temp = os.path.join(carpeta_salida, nombre_base + "_dialogos_mejorados.wav")
-    if os.path.exists(wav_temp):
-        os.remove(wav_temp)
-
-    # Filtro de ganancia en diálogos
     filtro = "dynaudnorm=f=150:g=31:p=0.95,firequalizer=gain=if(gte(f\\,400)\\,if(lte(f\\,4000)\\,2\\,0)\\,0)"
     
     cmd = [
@@ -176,8 +145,12 @@ def extraer_audio_mejorado(archivo_video, progress_callback=None):
         if retorno == 0:
             if progress_callback:
                 progress_callback(100.0)
-            print(f"✔ Audio extraído y mejorado: {wav_temp}")
-            return wav_temp
+            if os.path.isfile(wav_temp):
+                print(f"✔ Audio extraído y mejorado (temporal): {wav_temp}")
+                return wav_temp
+            else:
+                print("✖ El archivo WAV no se generó correctamente.")
+                return None
         else:
             print(f"✖ Error al extraer audio. Código: {retorno}")
             if DEBUG:
