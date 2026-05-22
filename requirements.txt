@@ -39,7 +39,7 @@ torch==2.12.0
 tqdm==4.67.3
 typer==0.25.1
 typing_extensions==4.15.0
-TTS
+coqui-tts
 pydub
 soundfile
 transformers==4.36.2
