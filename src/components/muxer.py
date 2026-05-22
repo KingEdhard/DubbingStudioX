@@ -112,56 +112,58 @@ def _ejecutar_ffmpeg_progreso(comando, duracion, progress_callback=None):
 
 def _construir_comando_mux(archivo_video, srt_ingles, srt_espanol, formato_salida, ruta_salida, audio_doblaje=None):
     cmd = [FFMPEG_PATH, '-y']
-    # input 0: video
     cmd.extend(['-i', archivo_video.replace('\\', '/')])
     num_inputs = 1
-    # input 1 (si existe): audio doblado
+
+    # Audio doblado (opcional)
+    idx_doblaje = None
     if audio_doblaje and os.path.exists(audio_doblaje):
         cmd.extend(['-i', audio_doblaje.replace('\\', '/')])
         idx_doblaje = num_inputs
         num_inputs += 1
-    else:
-        idx_doblaje = None
-    # input 2: srt inglés
-    cmd.extend(['-i', srt_ingles.replace('\\', '/')])
-    idx_eng = num_inputs
-    num_inputs += 1
-    # input 3 (opcional): srt español
+
+    # Subtítulo inglés (opcional)
+    idx_eng = None
+    if srt_ingles and os.path.exists(srt_ingles):
+        cmd.extend(['-i', srt_ingles.replace('\\', '/')])
+        idx_eng = num_inputs
+        num_inputs += 1
+
+    # Subtítulo español (opcional)
+    idx_esp = None
     tiene_esp = False
     if srt_espanol and os.path.exists(srt_espanol):
         cmd.extend(['-i', srt_espanol.replace('\\', '/')])
         idx_esp = num_inputs
         num_inputs += 1
         tiene_esp = True
-    else:
-        idx_esp = None
 
     # Mapeos
-    cmd.extend(['-map', '0:v'])   # video
-    # Audio doblado como primera pista
+    cmd.extend(['-map', '0:v'])  # video siempre
     if idx_doblaje is not None:
         cmd.extend(['-map', f'{idx_doblaje}:a'])
-    # Pistas de audio originales como adicionales
-    cmd.extend(['-map', '0:a?'])
-    # Subtítulo inglés
-    cmd.extend(['-map', f'{idx_eng}:s'])
-    # Subtítulo español si existe
-    if tiene_esp:
+    cmd.extend(['-map', '0:a?'])  # pistas de audio originales (si las hay)
+
+    if idx_eng is not None:
+        cmd.extend(['-map', f'{idx_eng}:s'])
+    if idx_esp is not None:
         cmd.extend(['-map', f'{idx_esp}:s'])
 
     # Códecs de video
     cmd.extend(['-c:v', 'copy'])
+
     # Códecs de audio: copiar todos, pero codificar el primer audio (doblaje) a AAC si existe
     if idx_doblaje is not None:
         cmd.extend(['-c:a', 'copy', '-c:a:0', 'aac', '-b:a:0', '192k'])
     else:
         cmd.extend(['-c:a', 'copy'])
 
-    # Códecs de subtítulos según formato
-    if formato_salida == 'mp4':
-        cmd.extend(['-c:s', 'mov_text'])
-    else:
-        cmd.extend(['-c:s', 'srt'])
+    # Códecs de subtítulos solo si hay subtítulos
+    if idx_eng is not None or idx_esp is not None:
+        if formato_salida == 'mp4':
+            cmd.extend(['-c:s', 'mov_text'])
+        else:
+            cmd.extend(['-c:s', 'srt'])
 
     cmd.extend(['-map_metadata', '0', '-map_chapters', '0'])
     cmd.append(ruta_salida.replace('\\', '/'))
@@ -171,10 +173,12 @@ def incrustar_subtitulos(archivo_video, srt_ingles, srt_espanol, formato_salida=
     if not os.path.exists(archivo_video):
         print("✖ No se encontró el video original.")
         return None
-    if not srt_ingles or not os.path.exists(srt_ingles):
+
+    # Validar SRTs solo si se proporcionaron (None se acepta para modo solo doblaje)
+    if srt_ingles is not None and not os.path.exists(srt_ingles):
         print("✖ No se proporcionó un subtítulo en inglés válido.")
         return None
-    if srt_espanol is None or not os.path.exists(srt_espanol):
+    if srt_espanol is not None and not os.path.exists(srt_espanol):
         print("⚠ Subtítulo en español no disponible. Se incrustará solo el inglés.")
         srt_espanol = None
 
