@@ -8,3 +8,5 @@ sacremoses
 transformers
 coqui-tts
 torch
+numpy>=2.1.0
+scipy==1.14.1
