@@ -9,7 +9,6 @@ from src.utils import FFMPEG_PATH, FFPROBE_PATH, DEBUG, input_validado
 CODECS_AUDIO_MP4 = {'aac', 'mp3', 'ac3', 'eac3', 'alac'}
 
 def _detectar_subs_incompatibles(archivo):
-    # (igual que antes, sin cambios)
     cmd = [FFPROBE_PATH, '-v', 'error', '-select_streams', 's', '-show_entries', 'stream=index,codec_name', '-of', 'json', archivo.replace('\\', '/')]
     try:
         res = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8')
@@ -111,28 +110,64 @@ def _ejecutar_ffmpeg_progreso(comando, duracion, progress_callback=None):
         progress_callback(100.0)
     return ret == 0, stderr_total
 
-def _construir_comando_mux(archivo_video, srt_ingles, srt_espanol, formato_salida, ruta_salida):
+def _construir_comando_mux(archivo_video, srt_ingles, srt_espanol, formato_salida, ruta_salida, audio_doblaje=None):
     cmd = [FFMPEG_PATH, '-y']
+    # input 0: video
     cmd.extend(['-i', archivo_video.replace('\\', '/')])
+    num_inputs = 1
+    # input 1 (si existe): audio doblado
+    if audio_doblaje and os.path.exists(audio_doblaje):
+        cmd.extend(['-i', audio_doblaje.replace('\\', '/')])
+        idx_doblaje = num_inputs
+        num_inputs += 1
+    else:
+        idx_doblaje = None
+    # input 2: srt inglés
     cmd.extend(['-i', srt_ingles.replace('\\', '/')])
+    idx_eng = num_inputs
+    num_inputs += 1
+    # input 3 (opcional): srt español
     tiene_esp = False
     if srt_espanol and os.path.exists(srt_espanol):
         cmd.extend(['-i', srt_espanol.replace('\\', '/')])
+        idx_esp = num_inputs
+        num_inputs += 1
         tiene_esp = True
-    cmd.extend(['-map', '0:v', '-map', '0:a?'])
-    cmd.extend(['-c:v', 'copy', '-c:a', 'copy'])
-    cmd.extend(['-map', '1'])
+    else:
+        idx_esp = None
+
+    # Mapeos
+    cmd.extend(['-map', '0:v'])   # video
+    # Audio doblado como primera pista
+    if idx_doblaje is not None:
+        cmd.extend(['-map', f'{idx_doblaje}:a'])
+    # Pistas de audio originales como adicionales
+    cmd.extend(['-map', '0:a?'])
+    # Subtítulo inglés
+    cmd.extend(['-map', f'{idx_eng}:s'])
+    # Subtítulo español si existe
     if tiene_esp:
-        cmd.extend(['-map', '2'])
+        cmd.extend(['-map', f'{idx_esp}:s'])
+
+    # Códecs de video
+    cmd.extend(['-c:v', 'copy'])
+    # Códecs de audio: copiar todos, pero codificar el primer audio (doblaje) a AAC si existe
+    if idx_doblaje is not None:
+        cmd.extend(['-c:a', 'copy', '-c:a:0', 'aac', '-b:a:0', '192k'])
+    else:
+        cmd.extend(['-c:a', 'copy'])
+
+    # Códecs de subtítulos según formato
     if formato_salida == 'mp4':
         cmd.extend(['-c:s', 'mov_text'])
     else:
         cmd.extend(['-c:s', 'srt'])
+
     cmd.extend(['-map_metadata', '0', '-map_chapters', '0'])
     cmd.append(ruta_salida.replace('\\', '/'))
     return cmd, tiene_esp
 
-def incrustar_subtitulos(archivo_video, srt_ingles, srt_espanol, formato_salida=None, progress_callback=None):
+def incrustar_subtitulos(archivo_video, srt_ingles, srt_espanol, formato_salida=None, progress_callback=None, audio_doblaje=None):
     if not os.path.exists(archivo_video):
         print("✖ No se encontró el video original.")
         return None
@@ -162,9 +197,9 @@ def incrustar_subtitulos(archivo_video, srt_ingles, srt_espanol, formato_salida=
         if problematicas:
             print("⚠ El archivo contiene codecs de audio no soportados en MP4. Se cambiará automáticamente a MKV para evitar errores.")
             extension = 'mkv'
-            formato_salida = 'mkv'  # forzar
+            formato_salida = 'mkv'
 
-    # Acortar nombre base si es muy largo (evitar MAX_PATH)
+    # Acortar nombre base si es muy largo
     dir_video = os.path.dirname(archivo_video)
     nombre_base = os.path.splitext(os.path.basename(archivo_video))[0]
     if len(nombre_base) > 100:
@@ -172,9 +207,9 @@ def incrustar_subtitulos(archivo_video, srt_ingles, srt_espanol, formato_salida=
         print(f"⚠ Nombre de archivo muy largo, se acortó a: {nombre_base}")
     carpeta_salida = os.path.join(dir_video, nombre_base + "_subtitulos_generados")
     os.makedirs(carpeta_salida, exist_ok=True)
-    ruta_salida = os.path.join(carpeta_salida, nombre_base + "_subtitulado." + extension)
+    ruta_salida = os.path.join(carpeta_salida, nombre_base + "_doblado." + extension)
     duracion = _obtener_duracion(archivo_video)
-    cmd, tiene_esp = _construir_comando_mux(archivo_video, srt_ingles, srt_espanol, extension, ruta_salida)
+    cmd, tiene_esp = _construir_comando_mux(archivo_video, srt_ingles, srt_espanol, extension, ruta_salida, audio_doblaje)
     if DEBUG:
         print("[DEBUG] Comando multiplexación:", ' '.join(cmd))
     exito, stderr = _ejecutar_ffmpeg_progreso(cmd, duracion, progress_callback=progress_callback)
