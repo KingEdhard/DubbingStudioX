@@ -142,7 +142,8 @@ def _construir_comando_mux(archivo_video, srt_ingles, srt_espanol, formato_salid
     cmd.extend(['-map', '0:v'])  # video siempre
     if idx_doblaje is not None:
         cmd.extend(['-map', f'{idx_doblaje}:a'])
-    cmd.extend(['-map', '0:a?'])  # pistas de audio originales (si las hay)
+    cmd.extend(['-map', '0:a?'])  # pistas de audio originales
+    cmd.extend(['-map', '0:s?'])  # CONSERVAR subtítulos originales (si los hay)
 
     if idx_eng is not None:
         cmd.extend(['-map', f'{idx_eng}:s'])
@@ -158,7 +159,7 @@ def _construir_comando_mux(archivo_video, srt_ingles, srt_espanol, formato_salid
     else:
         cmd.extend(['-c:a', 'copy'])
 
-    # Códecs de subtítulos solo si hay subtítulos
+    # Códecs de subtítulos solo si hay subtítulos nuevos (los originales se copian)
     if idx_eng is not None or idx_esp is not None:
         if formato_salida == 'mp4':
             cmd.extend(['-c:s', 'mov_text'])
