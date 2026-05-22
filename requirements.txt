@@ -37,9 +37,9 @@ sympy==1.14.0
 tokenizers==0.22.2
 torch==2.12.0
 tqdm==4.67.3
-transformers==5.8.1
 typer==0.25.1
 typing_extensions==4.15.0
 TTS
 pydub
 soundfile
+transformers==4.36.2
