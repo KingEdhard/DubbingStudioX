@@ -4,9 +4,7 @@ tqdm
 numpy
 pydub
 soundfile
-coqui-tts==0.24.0
-transformers==4.37.2
-torch==2.10.0
-torchvision==0.25.0
-torchaudio==2.10.0
 sacremoses
+transformers
+coqui-tts
+torch
