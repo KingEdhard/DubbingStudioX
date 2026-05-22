@@ -25,4 +25,4 @@ MIT – Libre uso, modificación y distribución.
 
 ---
 
-Creado por **KingEdhard** sobre la base de SubtitleStudio y SubtitleStudioX.
+Creado por [**KingEdhard**](https://github.com/KingEdhard) sobre la base de SubtitleStudio y SubtitleStudioX.
