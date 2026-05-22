@@ -42,4 +42,4 @@ typing_extensions==4.15.0
 coqui-tts
 pydub
 soundfile
-transformers==4.36.2
+transformers==4.37.2
